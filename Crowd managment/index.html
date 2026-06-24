@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>मंदिर भीड़ प्रबंधन प्रणाली</title>
+  <meta name="description" content="Temple Crowd Management - Tickets, Live Map, Heatmap, Dashboard, SOS, Live Darshan">
+
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+  <!-- QR Code Gen/Scan -->
+  <script src="https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js"></script>
+
+  <!-- HLS for Live Darshan -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <!-- Socket.IO client (optional, used if backend running) -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+  <!-- Icons & Base Styles -->
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/light/style.css">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <img class="hero-bg" alt="temple" src="src/assest/temple-hero.jpg"/>
+    <div class="overlay"></div>
+    <div class="hero-content">
+      <p class="hero-badge">डिजिटल मंदिर प्रबंधन</p>
+      <h1>मंदिर भीड़ प्रबंधन सिस्टम</h1>
+      <p class="sub">आधुनिक तकनीक के साथ पारंपरिक दर्शन का अनुभव | सुरक्षित, व्यवस्थित और आध्यात्मिक यात्रा।</p>
+      <div class="hero-cta">
+        <a href="#booking" class="btn primary"><span class="ph ph-ticket"></span> टिकट बुक करें</a>
+        <a href="#live" class="btn"><span class="ph ph-play"></span> लाइव दर्शन</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Quick Nav -->
+    <nav class="quick-nav">
+      <a href="#map" class="chip"><span class="ph ph-map-pin"></span> मंदिर मैप</a>
+      <a href="#booking" class="chip"><span class="ph ph-calendar"></span> टिकट बुकिंग</a>
+      <a href="#dashboard" class="chip"><span class="ph ph-chart-line"></span> डैशबोर्ड</a>
+      <a href="#live" class="chip"><span class="ph ph-video-camera"></span> लाइव दर्शन</a>
+    </nav>
+
+    <!-- Booking -->
+    <section id="booking" class="card">
+      <h2><span class="ph ph-ticket"></span> टिकट जनरेशन / प्री-बुकिंग</h2>
+      <form id="bookingForm" class="grid">
+        <label>नाम
+          <input type="text" id="name" required placeholder="अपना नाम दर्ज करें">
+        </label>
+        <label>मोबाइल
+          <input type="tel" id="phone" required pattern="[0-9]{10}" placeholder="10 अंकों का मोबाइल">
+        </label>
+        <label>एंट्री गेट
+          <select id="entryGate" required>
+            <option value="North">North</option>
+            <option value="South">South</option>
+            <option value="East">East</option>
+            <option value="West">West</option>
+          </select>
+        </label>
+        <label>एग्ज़िट गेट
+          <select id="exitGate" required>
+            <option value="North">North</option>
+            <option value="South">South</option>
+            <option value="East">East</option>
+            <option value="West">West</option>
+          </select>
+        </label>
+        <label>टाइम स्लॉट
+          <select id="timeSlot" required></select>
+        </label>
+        <button class="btn primary" type="submit">QR टिकट जनरेट करें</button>
+      </form>
+      <div id="slotInfo" class="muted small"></div>
+      <div id="qrSection" class="qr hidden">
+        <div id="qrcode"></div>
+        <div class="qr-meta">
+          <h3>आपका टिकट तैयार है</h3>
+          <p class="small">कृपया स्क्रीनशॉट न लें। प्रवेश पर स्कैन कराएं।</p>
+          <button id="downloadQR" class="btn">QR डाउनलोड करें</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Entry / Exit Scanners -->
+    <section id="scan" class="card">
+      <h2><span class="ph ph-scan"></span> एंट्री / एग्ज़िट स्कैन</h2>
+      <div class="tabs">
+        <button class="tab active" data-tab="entryScan">एंट्री स्कैन</button>
+        <button class="tab" data-tab="exitScan">एग्ज़िट स्कैन</button>
+      </div>
+      <div id="entryScan" class="tab-panel active">
+        <div id="entry-reader" class="scanner"></div>
+        <div class="muted small" id="entryStatus"></div>
+      </div>
+      <div id="exitScan" class="tab-panel">
+        <div id="exit-reader" class="scanner"></div>
+        <div class="muted small" id="exitStatus"></div>
+      </div>
+    </section>
+
+    <!-- Map & Heatmap -->
+    <section id="map" class="card">
+      <h2><span class="ph ph-map-trifold"></span> मंदिर नक्शा • भीड़ का स्तिथि</h2>
+      <div id="mapView"></div>
+      <div class="legend">
+        <span class="dot green"></span> कम भीड़
+        <span class="dot yellow"></span> मध्यम
+        <span class="dot red"></span> अधिक
+        <button id="suggestRoute" class="btn small">विकल्प मार्ग सुझाएँ</button>
+      </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="dashboard" class="card">
+      <h2><span class="ph ph-chart-pie"></span> प्राधिकरण लाइव डैशबोर्ड</h2>
+      <div class="stats">
+        <div class="stat"><div class="label">अंदर कुल</div><div class="value" id="inCount">0</div></div>
+        <div class="stat"><div class="label">आज जारी टिकट</div><div class="value" id="ticketsCount">0</div></div>
+        <div class="stat"><div class="label">भीड़ अलर्ट</div><div class="value" id="alertsCount">0</div></div>
+      </div>
+      <div id="alerts" class="alerts"></div>
+    </section>
+
+    <!-- SOS -->
+    <section id="sos" class="card">
+      <h2><span class="ph ph-siren"></span> आपातकाल (SOS)</h2>
+      <p class="muted">जरूरत पड़ने पर नीचे बटन दबाएँ। आपका लोकेशन तुरंत प्राधिकरण तक पहुँचेगा।</p>
+      <button id="sosBtn" class="btn danger"><span class="ph ph-siren"></span> SOS भेजें</button>
+      <div id="sosStatus" class="muted small"></div>
+    </section>
+
+    <!-- Live Darshan -->
+    <section id="live" class="card">
+      <h2><span class="ph ph-video-camera"></span> वर्चुअल / लाइव दर्शन</h2>
+      <video id="darshanPlayer" controls playsinline class="player" poster="src/assest/temple-hero.jpg"></video>
+      <div class="muted small">यदि वीडियो नहीं चलता, तो यह केवल प्लेसहोल्डर स्ट्रीम है।</div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div>© <span id="year"></span> Temple Crowd Management • गोपनीयता-सम्मत प्रणाली</div>
+  </footer>
+
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
+
+
